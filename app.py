@@ -19,8 +19,8 @@ st.set_page_config(
 )
 
 # High Quota Stable Model
-PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
+PRIMARY_MODEL = "gemini-3.5-flash"
+FALLBACK_MODEL = "gemini-2.0-flash"
 
 ANALYSIS_SCHEMA = {
     "type": "object",
