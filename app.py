@@ -18,7 +18,9 @@ st.set_page_config(
     layout="wide",
 )
 
-MODEL_NAME = "gemini-3.5-flash"
+# High Quota Stable Model
+PRIMARY_MODEL = "gemini-2.5-flash"
+FALLBACK_MODEL = "gemini-1.5-flash"
 
 ANALYSIS_SCHEMA = {
     "type": "object",
@@ -131,16 +133,35 @@ RESUME:
 
 def analyze_with_gemini(api_key: str, resume_text: str, job_description: str) -> dict:
     configure_gemini(api_key)
-    model = genai.GenerativeModel(
-        model_name=MODEL_NAME,
-        generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            response_schema=ANALYSIS_SCHEMA,
-            temperature=0.3,
-        ),
-    )
-    response = model.generate_content(build_analysis_prompt(resume_text, job_description))
-    return parse_json_response(response.text)
+    prompt = build_analysis_prompt(resume_text, job_description)
+    
+    try:
+        model = genai.GenerativeModel(
+            model_name=PRIMARY_MODEL,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=ANALYSIS_SCHEMA,
+                temperature=0.3,
+            ),
+        )
+        response = model.generate_content(prompt)
+        return parse_json_response(response.text)
+    except Exception as e:
+        # Fallback if primary model runs out of quota or fails
+        if "429" in str(e) or "ResourceExhausted" in str(e):
+            st.warning(f"⚠️ Primary model quota reached. Switching to fallback model ({FALLBACK_MODEL})...")
+            model = genai.GenerativeModel(
+                model_name=FALLBACK_MODEL,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=ANALYSIS_SCHEMA,
+                    temperature=0.3,
+                ),
+            )
+            response = model.generate_content(prompt)
+            return parse_json_response(response.text)
+        else:
+            raise e
 
 
 def build_bullet_prompt(
@@ -175,18 +196,33 @@ def optimize_bullet_with_gemini(
     job_description: str,
 ) -> dict:
     configure_gemini(api_key)
-    model = genai.GenerativeModel(
-        model_name=MODEL_NAME,
-        generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            response_schema=BULLET_SCHEMA,
-            temperature=0.5,
-        ),
-    )
-    response = model.generate_content(
-        build_bullet_prompt(bullet, missing_keywords, job_description)
-    )
-    return parse_json_response(response.text)
+    prompt = build_bullet_prompt(bullet, missing_keywords, job_description)
+    
+    try:
+        model = genai.GenerativeModel(
+            model_name=PRIMARY_MODEL,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=BULLET_SCHEMA,
+                temperature=0.5,
+            ),
+        )
+        response = model.generate_content(prompt)
+        return parse_json_response(response.text)
+    except Exception as e:
+        if "429" in str(e) or "ResourceExhausted" in str(e):
+            model = genai.GenerativeModel(
+                model_name=FALLBACK_MODEL,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    response_schema=BULLET_SCHEMA,
+                    temperature=0.5,
+                ),
+            )
+            response = model.generate_content(prompt)
+            return parse_json_response(response.text)
+        else:
+            raise e
 
 
 def generate_pdf_report(result: dict) -> bytes:
@@ -384,7 +420,7 @@ with st.sidebar:
     api_key = st.text_input(
         "Gemini API Key",
         type="password",
-        help="Get your key from Google AI Studio: https://aistudio.google.com/apikey",
+        help="Get your key from Google AI Studio: [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)",
     )
     st.markdown("---")
     st.markdown(
